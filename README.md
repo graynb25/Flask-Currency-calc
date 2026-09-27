@@ -45,6 +45,11 @@ Rates are **mid-market reference rates**, the interbank midpoint. Banks, cards a
 kiosks add their own margin (typically 1-4 %), so treat results as accurate
 calculations, not quotes.
 
+## Documentation
+
+- [Architecture](ARCHITECTURE.md): how the engine, cache, API, and UI fit together
+- [Contributing](CONTRIBUTING.md): setup, project rules, and PR checklist
+
 ## Security notes
 
 - No API keys or secrets: every data source is free and keyless.
@@ -65,3 +70,9 @@ calculations, not quotes.
 | `main_original.py` | The original hand-entered-rate version (backup) |
 | `templates/`, `static/` | Web UI (no build step, vanilla JS)         |
 | `rates_cache.json` | Local rate cache (auto-created, safe to delete) |
+
+## License
+
+Released under the [MIT License](LICENSE). Exchange-rate data belongs to its
+providers (ExchangeRate-API, the fawazahmed0 currency-api project, and the
+European Central Bank via Frankfurter).
