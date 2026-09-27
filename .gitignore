@@ -1,0 +1,12 @@
+# Python virtual environment
+.venv/
+
+# Python build artifacts
+__pycache__/
+*.pyc
+
+# PyCharm machine-specific config
+.idea/
+
+# Generated cache (public rate data only; recreated at runtime)
+rates_cache.json

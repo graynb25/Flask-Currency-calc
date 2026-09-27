@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Currency Converter · Live Rates</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <!-- drifting aurora background -->
+  <div class="aurora" aria-hidden="true">
+    <span class="a1"></span><span class="a2"></span><span class="a3"></span><span class="a4"></span>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 8h13l-3.5-3.5"/><path d="M20 16H7l3.5 3.5"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Currency <span>Converter</span></h1>
+        <p>Live mid-market rates · 160+ currencies</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-pill" id="statusPill" title="">
+        <span class="dot" id="statusDot"></span><span id="statusText">Loading rates…</span>
+      </div>
+      <button id="refreshBtn" class="icon-btn" title="Refresh rates now" aria-label="Refresh rates">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- converter -->
+    <section class="glass card converter">
+      <div class="field amount-field">
+        <label for="amount">Amount</label>
+        <div class="amount-box">
+          <span class="amount-symbol" id="amountSymbol">$</span>
+          <input id="amount" type="text" inputmode="decimal" value="100"
+                 autocomplete="off" spellcheck="false" aria-label="Amount to convert">
+        </div>
+      </div>
+
+      <div class="pair-row">
+        <div class="field">
+          <span class="field-label">From</span>
+          <div id="fromCur" aria-label="Source currency"></div>
+        </div>
+        <button id="swapBtn" class="swap" title="Swap currencies" aria-label="Swap currencies">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 8h13l-3.5-3.5"/><path d="M20 16H7l3.5 3.5"/>
+          </svg>
+        </button>
+        <div class="field">
+          <span class="field-label">To</span>
+          <div id="toCur" aria-label="Target currency"></div>
+        </div>
+      </div>
+
+      <div class="result-box">
+        <div class="result-label">Converted to</div>
+        <div class="result-row">
+          <div class="result" id="resultValue">&#8230;</div>
+          <div class="result-code" id="resultCode"></div>
+          <button id="copyBtn" class="icon-btn" title="Copy result" aria-label="Copy result">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+            </svg>
+          </button>
+        </div>
+        <div class="rate-line" id="rateLine"></div>
+      </div>
+
+      <div class="chips" id="chips" aria-label="Popular pairs"></div>
+    </section>
+
+    <!-- quick conversions relative to the source currency -->
+    <section class="also-in">
+      <h2>Also worth knowing</h2>
+      <div class="mini-grid" id="miniGrid"></div>
+    </section>
+
+    <!-- 30/7/90-day history chart -->
+    <section class="glass card chart-card">
+      <div class="chart-head">
+        <h2 id="chartTitle">History</h2>
+        <div class="range-pills" id="rangePills" role="group" aria-label="History range">
+          <button data-days="7">7D</button>
+          <button data-days="30" class="active">30D</button>
+          <button data-days="90">90D</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="historyChart"></canvas>
+        <div class="chart-empty hidden" id="chartEmpty"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Rates: <strong>exchangerate-api.com</strong> (daily, 160+ currencies) ·
+      History: <strong>frankfurter.dev / ECB</strong> for major pairs, daily CDN snapshots for all others ·
+      Mid-market reference rates; actual bank &amp; kiosk rates include margins.
+    </p>
+  </footer>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
