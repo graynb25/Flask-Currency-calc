@@ -8,6 +8,7 @@ Usage:  python main.py
 
 import difflib
 import re
+import sys
 
 from converter import (
     CurrencyError,
@@ -115,6 +116,17 @@ def do_conversion(text: str, rates: dict, names: dict[str, str]) -> None:
 
 
 def main() -> None:
+    # The banner and the help text are box-drawing and middle-dot characters.
+    # A Windows console defaults to cp1252 and cannot encode them, so the very
+    # first print raised UnicodeEncodeError and the CLI never started. Ask for
+    # UTF-8 and fall back to replacing anything still unencodable rather than
+    # refusing to draw.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass  # a replaced stream, e.g. piped and already decoded
     print(BANNER)
     try:
         rates = fetch_rates()

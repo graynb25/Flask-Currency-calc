@@ -25,6 +25,20 @@ python -m venv .venv
 Only `requests` and `flask` are required. Do not add dependencies for things
 the standard library already covers.
 
+If `.venv\Scripts\python.exe` reports that it cannot find its base
+interpreter, the venv outlived the Python it was built against. Recreate it in
+place; the base interpreter is all that is missing:
+
+```bat
+rmdir /s /q .venv
+python -m venv .venv
+.venv\Scripts\pip install requests flask
+```
+
+The CLI reconfigures its own output to UTF-8 on startup, so the box-drawing
+banner renders on a default Windows console (`cp1252`) without a code page
+change. If you add non-ASCII text to it, keep that `reconfigure` call.
+
 ## Before you open a pull request
 
 - Keep it small: one bug fix or one feature per PR.
@@ -33,6 +47,11 @@ the standard library already covers.
 - Sanity checks worth running:
   - Convert in both directions (for example `100 USD to COP`, then swap) and
     confirm the round trip is exact.
+  - Try both amount conventions, `1,234.56` and `1.234,56`, and confirm they
+    give the *same* answer. A parser change that treats one as a thousands
+    separator is a 1000x error that looks like a plausible result.
+  - Ask for an amount the float64 range cannot hold (`amount=1e400`) and confirm
+    a clean 400, never a 200 whose body is not valid JSON.
   - Enter an invalid amount and an unknown currency; both should fail with a
     clean message, not a stack trace.
   - Check the browser console for JavaScript errors.
@@ -54,9 +73,17 @@ the standard library already covers.
    through the `esc()` helper before it touches `innerHTML`.
 6. **Precision matters.** Money math is `Decimal` on the server; frontend
    formatting goes through the `Intl.NumberFormat` helpers in `app.js`. Do not
-   round a carried amount to display decimals.
+   round a carried amount to display decimals. Re-check finiteness *after*
+   narrowing to `float` for JSON: `Decimal` accepts ranges float64 cannot
+   hold, and an `Infinity` token is not valid JSON, so a response carrying one
+   is unreadable rather than merely imprecise.
 7. **Fail gracefully.** Every upstream call needs a timeout, a fallback, and a
    clean JSON error path. An outage should degrade the app, not crash it.
+   Network reads go through the `_Upstream` gate, and a failure must never be
+   cached as though a source had answered.
+8. **One definition of user input.** A parser shared by the CLI and the web
+   input lives in `converter.py`; if you change it, change `parseAmountText()`
+   in `app.js` in the same PR.
 
 ## Reporting bugs
 
