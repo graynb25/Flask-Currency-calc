@@ -6,8 +6,11 @@ A currency converter that pulls **real, live exchange rates** for **160+ currenc
 ## Run the web UI
 
 ```bat
+.venv\Scripts\pip install -r requirements.txt
 .venv\Scripts\python app.py
 ```
+
+Needs Python 3.9 or newer; the only dependencies are `flask` and `requests`.
 
 Opens http://127.0.0.1:5000 in your browser automatically. Features:
 
@@ -73,6 +76,7 @@ calculations, not quotes.
 
 | File               | Purpose                                        |
 |--------------------|------------------------------------------------|
+| `requirements.txt` | Pinned runtime dependencies (`flask`, `requests`) |
 | `converter.py`     | Rate fetching/caching, conversion math, history |
 | `app.py`           | Flask backend + JSON API for the web UI         |
 | `main.py`          | Interactive CLI                                 |

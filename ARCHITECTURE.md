@@ -39,6 +39,7 @@ The CLI (`main.py`) calls `converter.py` directly and skips the web layer.
 | `app.py`            | Flask backend: JSON API, rate limiting, security headers    |
 | `main.py`           | Interactive CLI (conversion REPL, list, refresh)            |
 | `main_original.py`  | The original learning project, kept as a reference          |
+| `requirements.txt`  | Pinned runtime dependencies (flask, requests)                |
 | `templates/index.html` | Single page served to the browser                        |
 | `static/style.css`  | Dark "liquid glass" theme                                   |
 | `static/app.js`     | Comboboxes, formatting, chart, persistence                  |

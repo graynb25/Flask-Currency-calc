@@ -12,9 +12,9 @@ cd Flask-Currency-calc
 
 python -m venv .venv
 # Windows:
-.venv\Scripts\pip install requests flask
+.venv\Scripts\pip install -r requirements.txt
 # macOS / Linux:
-.venv/bin/pip install requests flask
+.venv/bin/pip install -r requirements.txt
 
 # Web UI (opens http://127.0.0.1:5000):
 .venv\Scripts\python app.py
@@ -22,8 +22,9 @@ python -m venv .venv
 .venv\Scripts\python main.py
 ```
 
-Only `requests` and `flask` are required. Do not add dependencies for things
-the standard library already covers.
+Python 3.9 or newer. Only `flask` and `requests` are required, pinned in
+`requirements.txt`. Do not add dependencies for things the standard library
+already covers; if you do add one, add it to that file too.
 
 If `.venv\Scripts\python.exe` reports that it cannot find its base
 interpreter, the venv outlived the Python it was built against. Recreate it in
@@ -32,7 +33,7 @@ place; the base interpreter is all that is missing:
 ```bat
 rmdir /s /q .venv
 python -m venv .venv
-.venv\Scripts\pip install requests flask
+.venv\Scripts\pip install -r requirements.txt
 ```
 
 The CLI reconfigures its own output to UTF-8 on startup, so the box-drawing
