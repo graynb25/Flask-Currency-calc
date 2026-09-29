@@ -52,6 +52,13 @@ def enforce_rate_limits():
         bucket = _api_hits[ip]
         while bucket and bucket[0] <= now - RATE_WINDOW_SECONDS:
             bucket.popleft()
+        if len(_api_hits) > 4096:  # bound memory; drop idle buckets first.
+            # Before the limit check, not after: a client that is being
+            # throttled would otherwise never reach this, and the rejected
+            # requests are exactly the ones filling the dict.
+            cutoff = now - RATE_WINDOW_SECONDS
+            for key in [k for k, v in _api_hits.items() if not v or v[-1] <= cutoff]:
+                _api_hits.pop(key, None)
         if len(bucket) >= limit:
             resp = jsonify(
                 {"error": f"Rate limit reached ({limit} requests/min). Try again shortly."}
@@ -60,10 +67,6 @@ def enforce_rate_limits():
             resp.headers["Retry-After"] = str(RATE_WINDOW_SECONDS)
             return resp
         bucket.append(now)
-        if len(_api_hits) > 4096:  # bound memory; drop idle buckets first
-            idle = [k for k, v in _api_hits.items() if not v or v[-1] <= now - RATE_WINDOW_SECONDS]
-            for key in idle:
-                _api_hits.pop(key, None)
     return None
 
 
@@ -107,7 +110,10 @@ def api_currencies():
 def api_convert():
     try:
         rates = converter.fetch_rates()
-        amount = request.args.get("amount", "1")
+        # Narrow to float once, up front: the amount drives every result below,
+        # and a value that cannot survive the float64 rounding must be rejected
+        # before any work is done rather than halfway through the loop.
+        amount_value = converter.finite_float(request.args.get("amount", "1"))
         from_cur = _currency_arg("from", rates)
         to_raw = request.args.get("to", "EUR")
         targets = [t.strip().upper() for t in to_raw.split(",") if t.strip()]
@@ -119,11 +125,13 @@ def api_convert():
             if target not in rates["rates"]:
                 return jsonify({"error": f"Unsupported currency code: {target}"}), 400
             rate = converter.get_rate(from_cur, target, rates)
-            results[target] = float(converter.convert(amount, from_cur, target, rates))
-            rate_map[target] = float(rate)
+            results[target] = converter.finite_float(
+                converter.convert(amount_value, from_cur, target, rates), "Converted amount"
+            )
+            rate_map[target] = converter.finite_float(rate, "Exchange rate")
         return jsonify(
             {
-                "amount": float(amount),
+                "amount": amount_value,
                 "from": from_cur,
                 "results": results,
                 "rates": rate_map,
@@ -182,4 +190,14 @@ def _open_browser() -> None:
 if __name__ == "__main__":
     if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         _open_browser()  # only in the reloader's parent, so it opens once
-    app.run(debug=True)
+    # The Werkzeug debugger lets anyone who can reach this port run code in
+    # the interpreter, with no authentication. Fine on loopback, fatal the
+    # moment this is bound to anything else - so it is opt-out, not opt-in,
+    # and says so on startup rather than leaving it to be discovered.
+    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
+    if debug:
+        print(
+            "  Flask debug mode ON - the interactive debugger is unauthenticated.\n"
+            "  Keep this on loopback only, or set FLASK_DEBUG=0 to disable it."
+        )
+    app.run(debug=debug)

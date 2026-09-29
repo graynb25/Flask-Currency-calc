@@ -8,7 +8,6 @@ Usage:  python main.py
 
 import difflib
 import re
-from decimal import Decimal
 
 from converter import (
     CurrencyError,
@@ -17,10 +16,11 @@ from converter import (
     format_money,
     format_rate,
     get_rate,
+    parse_amount,
 )
 
 CONVERSION_RE = re.compile(
-    r"^\s*(?P<amount>[\d.,]+)?\s*(?P<from>[A-Za-z]{3})\s*"
+    r"^\s*(?P<amount>[\d.,]+(?:[eE][+-]?\d+)?)?\s*(?P<from>[A-Za-z]{3})\s*"
     r"(?:to|->|→|in|=)\s*(?P<to>[A-Za-z]{3}(?:\s*,\s*[A-Za-z]{3})*)\s*$"
 )
 
@@ -39,9 +39,21 @@ HELP = """\
 
 
 def suggest(code: str, names: dict[str, str]) -> str:
-    """Closest matching currency codes for a typo'd input."""
-    candidates = list(names) + [n.lower() for n in names.values()]
-    matches = difflib.get_close_matches(code.lower(), candidates, n=3, cutoff=0.6)
+    """Closest matching currency *codes* for a typo'd input.
+
+    Names are consulted too, but only ever mapped back to their code: the
+    old candidate list was codes plus full names, so a close match on a name
+    came back uppercased as "US DOLLAR" - not something the user can type.
+    """
+    codes = list(names)
+    matches = difflib.get_close_matches(code.lower(), codes, n=3, cutoff=0.6)
+    if not matches:
+        by_name = {n.lower(): c for c, n in names.items() if n}
+        matches = [
+            by_name[m]
+            for m in difflib.get_close_matches(code.lower(), list(by_name), n=3, cutoff=0.6)
+            if m in by_name
+        ]
     return ", ".join(m.upper() for m in matches) or "try `list` to browse codes"
 
 
@@ -79,14 +91,15 @@ def do_conversion(text: str, rates: dict, names: dict[str, str]) -> None:
             amount_text = input("  Amount: ")
         except EOFError:
             return
-        match2 = re.match(r"^\s*([\d.,]+)\s*$", amount_text)
-        if not match2:
+        try:
+            parse_amount(amount_text)
+        except CurrencyError:
             print("That's not a number.")
             return
-        amount_text = match2.group(1)
+        amount_text = amount_text.strip()
 
     try:
-        amount = Decimal(amount_text.replace(",", ""))
+        amount = parse_amount(amount_text)
         for target in (t.strip().upper() for t in targets.split(",")):
             result = convert(amount, from_cur, target, rates)
             rate = get_rate(from_cur, target, rates)

@@ -53,6 +53,7 @@ const state = {
   historyKey: null,   // "USD/EUR/30" of the currently drawn chart
   convertTimer: null,
   toastTimer: null,
+  rafId: null,        // in-flight count-up frame, cancelled before the next
 };
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -250,8 +251,12 @@ function fmtAmountInput(value) {
   return new Intl.NumberFormat("en-US", { maximumSignificantDigits: 15 }).format(value);
 }
 
-/* Animated count-up so the big result "lands" instead of just swapping text. */
+/* Animated count-up so the big result "lands" instead of just swapping text.
+   Every run cancels the previous one: the input debounce (250 ms) is shorter
+   than the animation (480 ms), so two loops are otherwise alive at once and
+   the older one keeps overwriting textContent after the newer one started. */
 function animateCurrency(elm, target, code) {
+  if (state.rafId) cancelAnimationFrame(state.rafId);
   const from = parseFloat(elm.dataset.value ?? target);
   elm.dataset.value = target;
   if (reducedMotion.matches || !Number.isFinite(from) || from === target) {
@@ -264,9 +269,13 @@ function animateCurrency(elm, target, code) {
     const t = Math.min((now - start) / duration, 1);
     const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
     elm.textContent = fmtCurrency(code, from + (target - from) * eased);
-    if (t < 1) requestAnimationFrame(frame);
+    if (t < 1) {
+      state.rafId = requestAnimationFrame(frame);
+    } else {
+      state.rafId = null;
+    }
   }
-  requestAnimationFrame(frame);
+  state.rafId = requestAnimationFrame(frame);
 }
 
 /* ------------------------------------------------------------------ */
@@ -278,6 +287,9 @@ async function api(path, options) {
   let body = null;
   try { body = await res.json(); } catch { /* non-JSON error page */ }
   if (!res.ok) throw new Error((body && body.error) || `Request failed (${res.status})`);
+  // A 200 we cannot parse is a broken response, not a result. Without this the
+  // caller dereferences null and the UI freezes with no explanation.
+  if (!body) throw new Error(`Unexpected response from ${path} (${res.status})`);
   return body;
 }
 
@@ -372,8 +384,76 @@ function renderMiniCards() {
 /* conversion                                                          */
 /* ------------------------------------------------------------------ */
 
+/* Mirror of converter.parse_amount() - keep the two in step.
+   Decides which separator is the decimal point by position rather than
+   stripping every comma, which turned "1.234,56" into 1.23456 (a silent
+   1000x error) and "1,5" into 15. Returns null when the text is not a number. */
+function parseAmountText(raw) {
+  const cleaned = String(raw ?? "").replace(/[\s\u00a0\u202f\u2009]/g, "");
+  if (!cleaned) return null;
+
+  let body = cleaned;
+  let exponent = 0;
+  const sci = /^([+-]?)([\d.,]+)[eE]([+-]?\d+)$/.exec(body);
+  if (sci) {
+    body = sci[1] + sci[2];
+    exponent = Number(sci[3]);
+  }
+
+  let sign = "";
+  if (body.startsWith("+") || body.startsWith("-")) {
+    sign = body[0];
+    body = body.slice(1);
+  }
+  if (!/^[\d.,]+$/.test(body)) return null;
+
+  const dots = (body.match(/\./g) || []).length;
+  const commas = (body.match(/,/g) || []).length;
+  let digits;
+  if (dots && commas) {
+    // right-most separator is the decimal point, the other is grouping
+    const point = body.lastIndexOf(".") > body.lastIndexOf(",") ? "." : ",";
+    const grouping = point === "." ? "," : ".";
+    const cut = body.lastIndexOf(point);
+    const head = body.slice(0, cut).split(grouping).join("");
+    const tail = body.slice(cut + 1);
+    if (!/^\d+$/.test(head) || !/^\d+$/.test(tail)) return null;
+    digits = `${head}.${tail}`;
+  } else {
+    const sep = dots ? "." : commas ? "," : "";
+    if (!sep) {
+      if (!/^\d+$/.test(body)) return null;
+      digits = body;
+    } else {
+      const parts = body.split(sep);
+      if (parts.length > 2) {           // 1.234.567 -> grouping throughout
+        if (!/^\d+$/.test(parts[0]) ||
+            !parts.slice(1).every((p) => p.length === 3 && /^\d+$/.test(p))) return null;
+        digits = parts.join("");
+      } else if (parts[0] === "") {
+        if (sep !== ".") return null;    // ",5" is not a number anyone means
+        digits = `0.${parts[1]}`;        // ".5" is an ordinary decimal
+      } else if (parts[1] === "") {
+        // "100." is normal halfway through an edit; "100," is not a number
+        if (sep !== "." || !/^\d+$/.test(parts[0])) return null;
+        digits = parts[0];
+      } else if (!/^\d+$/.test(parts[0]) || !/^\d+$/.test(parts[1])) {
+        return null;
+      } else if (parts[1].length === 3) {
+        digits = parts.join("");         // 1,234 -> grouping
+      } else {
+        digits = `${parts[0]}.${parts[1]}`;   // 1,5 / 1.5 / 0.0076722
+      }
+    }
+  }
+
+  const value = Number(`${sign}${digits}`);
+  if (!Number.isFinite(value)) return null;
+  return exponent ? value * 10 ** exponent : value;
+}
+
 function amountValue(raw) {
-  const parsed = parseFloat((raw ?? el.amount.value).replace(/[,\s]/g, ""));
+  const parsed = parseAmountText(raw ?? el.amount.value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
@@ -533,10 +613,17 @@ function saveState() {
   try {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ from: state.from, to: state.to, amount: el.amount.value })
+      JSON.stringify({
+        from: state.from,
+        to: state.to,
+        amount: el.amount.value,
+        chartDays: state.chartDays,
+      })
     );
   } catch { /* private mode etc. */ }
 }
+
+const VALID_RANGES = new Set([7, 30, 90]);
 
 function restoreState() {
   try {
@@ -544,6 +631,7 @@ function restoreState() {
     if (saved.from && state.rates[saved.from]) state.from = saved.from;
     if (saved.to && state.rates[saved.to]) state.to = saved.to;
     if (saved.amount && amountValue(saved.amount) !== null) el.amount.value = saved.amount;
+    if (VALID_RANGES.has(saved.chartDays)) state.chartDays = saved.chartDays;
   } catch { /* corrupt storage: keep defaults */ }
 }
 
@@ -558,6 +646,15 @@ function onPairChange() {
   convert();
   renderMiniCards();
   loadHistory();
+}
+
+/* The 7/30/90 pills are static markup, so the active one is derived from
+   state rather than trusted from the HTML - otherwise a restored 90-day
+   preference drew 90 days while 30D stayed highlighted. */
+function syncRangePills() {
+  for (const b of el.rangePills.children) {
+    b.classList.toggle("active", Number(b.dataset.days) === state.chartDays);
+  }
 }
 
 async function loadCurrencies() {
@@ -576,6 +673,7 @@ async function loadCurrencies() {
   restoreState();       // override defaults with the user's last pair/amount
   fromBox.set(state.from);
   toBox.set(state.to);
+  syncRangePills();
 
   populateChips();
   onPairChange();
@@ -619,8 +717,9 @@ el.refresh.addEventListener("click", refreshRates);
 el.rangePills.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-days]");
   if (!btn) return;
-  for (const b of el.rangePills.children) b.classList.toggle("active", b === btn);
   state.chartDays = Number(btn.dataset.days);
+  syncRangePills();
+  saveState();
   loadHistory();
 });
 
