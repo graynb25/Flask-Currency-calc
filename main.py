@@ -39,23 +39,31 @@ HELP = """\
   quit                    exit"""
 
 
-def suggest(code: str, names: dict[str, str]) -> str:
+def suggest(code: str, rates: dict, names: dict[str, str]) -> str:
     """Closest matching currency *codes* for a typo'd input.
+
+    Codes come from the live rate table, not from `names`: names arrive from a
+    separate CDN call that is allowed to fail, and a code the rate table does
+    not carry is not one the user can convert to. Both sides of the code
+    comparison are lowercased because the typo is lowercased and difflib is
+    case-sensitive; matching the old uppercase codes against it scored every
+    pair at zero and made this path dead.
 
     Names are consulted too, but only ever mapped back to their code: the
     old candidate list was codes plus full names, so a close match on a name
     came back uppercased as "US DOLLAR" - not something the user can type.
     """
-    codes = list(names)
-    matches = difflib.get_close_matches(code.lower(), codes, n=3, cutoff=0.6)
-    if not matches:
+    by_code = {c.lower(): c for c in rates["rates"]}
+    matches = difflib.get_close_matches(code.lower(), list(by_code), n=3, cutoff=0.6)
+    if matches:
+        found = [by_code[m] for m in matches]
+    else:
         by_name = {n.lower(): c for c, n in names.items() if n}
-        matches = [
-            by_name[m]
-            for m in difflib.get_close_matches(code.lower(), list(by_name), n=3, cutoff=0.6)
-            if m in by_name
-        ]
-    return ", ".join(m.upper() for m in matches) or "try `list` to browse codes"
+        matches = difflib.get_close_matches(
+            code.lower(), list(by_name), n=3, cutoff=0.6
+        )
+        found = [by_name[m] for m in matches]
+    return ", ".join(found) or "try `list` to browse codes"
 
 
 def show_list(query: str, rates: dict, names: dict[str, str]) -> None:
@@ -84,7 +92,7 @@ def do_conversion(text: str, rates: dict, names: dict[str, str]) -> None:
     amount_text, from_cur, targets = match.group("amount", "from", "to")
     from_cur = from_cur.upper()
     if from_cur not in rates["rates"]:
-        print(f"Unknown currency {from_cur}. Did you mean: {suggest(from_cur, names)}?")
+        print(f"Unknown currency {from_cur}. Did you mean: {suggest(from_cur, rates, names)}?")
         return
 
     if not amount_text:
