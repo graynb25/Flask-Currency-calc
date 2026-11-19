@@ -5,11 +5,11 @@
 #     .venv\Scripts\pip install -r requirements.txt     (Windows)
 #     .venv/bin/pip install -r requirements.txt        (macOS / Linux)
 #
-# Requires Python 3.9 or newer. main.py annotates with dict[str, str] and does
-# not use "from __future__ import annotations", so those annotations are
-# evaluated at runtime and 3.8 fails with
-# "'type' object is not subscriptable". Verified: 3.9 is the first version that
-# loads all three modules.
+# Requires Python 3.10 or newer. The code itself would still load on 3.9, but
+# the pinned requests==2.34.2 declares Requires-Python >=3.10, and the dev-only
+# pytest pin in requirements-dev.txt does the same, so a fresh install on 3.9
+# is impossible: pip rejects the pins before anything can run. Verified: 3.10
+# is the first version these pins install into.
 #
 # Direct dependencies are pinned to the versions this was tested against
 # (Python 3.14.7). Transitive dependencies are deliberately left unpinned so

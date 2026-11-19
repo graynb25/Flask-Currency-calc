@@ -10,7 +10,7 @@ A currency converter that pulls **real, live exchange rates** for **160+ currenc
 .venv\Scripts\python app.py
 ```
 
-Needs Python 3.9 or newer; the only dependencies are `flask` and `requests`.
+Needs Python 3.10 or newer; the only dependencies are `flask` and `requests`.
 
 Opens http://127.0.0.1:5000 in your browser automatically. Features:
 
@@ -106,7 +106,7 @@ calculations, not quotes.
 | `rates_cache.json` | Local rate cache (auto-created, safe to delete) |
 | `tests/`           | Offline pytest suite (71 tests, network stubbed) |
 | `requirements-dev.txt` | Dev-only dependencies (pytest)         |
-| `.github/workflows/ci.yml` | CI: pytest on push and PR, Python 3.9 and 3.14 |
+| `.github/workflows/ci.yml` | CI: pytest on push and PR, Python 3.10 and 3.14 |
 
 ## License
 

@@ -22,7 +22,7 @@ python -m venv .venv
 .venv\Scripts\python main.py
 ```
 
-Python 3.9 or newer. Only `flask` and `requests` are required, pinned in
+Python 3.10 or newer. Only `flask` and `requests` are required, pinned in
 `requirements.txt`. Do not add dependencies for things the standard library
 already covers; if you do add one, add it to that file too. Dev-only tooling
 never goes there: it goes to `requirements-dev.txt`, which currently pins

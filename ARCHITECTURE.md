@@ -46,7 +46,7 @@ The CLI (`main.py`) calls `converter.py` directly and skips the web layer.
 | `rates_cache.json`  | Generated local cache (gitignored, safe to delete)          |
 | `tests/`            | Offline pytest suite (71 tests; network stubbed, temp cache) |
 | `requirements-dev.txt` | Pinned dev-only dependencies (pytest)                    |
-| `.github/workflows/ci.yml` | CI on push and pull request: pytest, Python 3.9 and 3.14 |
+| `.github/workflows/ci.yml` | CI on push and pull request: pytest, Python 3.10 and 3.14 |
 
 ## Data sources
 
@@ -303,7 +303,8 @@ the UI itself, which is what the pull request checklist in CONTRIBUTING.md is
 for.
 
 `.github/workflows/ci.yml` runs the suite on every push and pull request
-across Python 3.9 and 3.14, the floor the code targets and a current release.
+across Python 3.10 and 3.14, the floor the pinned dependencies require (both
+pins declare Requires-Python >=3.10) and a current release.
 The precision claims in Conversion math are not prose: `tests/test_convert.py`
 asserts the reciprocal product within 3e-28 and the 100-unit round trip within
 3e-26, so they fail CI if the math regresses.
