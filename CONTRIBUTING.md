@@ -24,7 +24,9 @@ python -m venv .venv
 
 Python 3.9 or newer. Only `flask` and `requests` are required, pinned in
 `requirements.txt`. Do not add dependencies for things the standard library
-already covers; if you do add one, add it to that file too.
+already covers; if you do add one, add it to that file too. Dev-only tooling
+never goes there: it goes to `requirements-dev.txt`, which currently pins
+`pytest` alone, and the app runs without it.
 
 If `.venv\Scripts\python.exe` reports that it cannot find its base
 interpreter, the venv outlived the Python it was built against. Recreate it in
@@ -42,9 +44,16 @@ change. If you add non-ASCII text to it, keep that `reconfigure` call.
 
 ## Before you open a pull request
 
+- Run the test suite first: `pip install -r requirements-dev.txt`, then
+  `python -m pytest`. All 71 tests must pass, and they must stay offline:
+  stub every upstream call in the test itself (the autouse fixture in
+  `tests/conftest.py` fails loudly on any un-stubbed request) and let it point
+  the cache at a temp file, so the suite never touches the network or the real
+  `rates_cache.json`.
 - Keep it small: one bug fix or one feature per PR.
 - Run the app and exercise your change in the UI, and in the CLI if it touches
-  `converter.py`.
+  `converter.py`. The suite covers the engine, the API, and the CLI; the
+  checks below cover what automation cannot, a real browser and a real console.
 - Sanity checks worth running:
   - Convert in both directions (for example `100 USD to COP`, then swap) and
     confirm the round trip is exact.
@@ -82,9 +91,11 @@ change. If you add non-ASCII text to it, keep that `reconfigure` call.
    clean JSON error path. An outage should degrade the app, not crash it.
    Network reads go through the `_Upstream` gate, and a failure must never be
    cached as though a source had answered.
-8. **One definition of user input.** A parser shared by the CLI and the web
-   input lives in `converter.py`; if you change it, change `parseAmountText()`
-   in `app.js` in the same PR.
+8. **One definition of user input.** The amount parser lives in
+   `converter.py` and covers all three entry points: the CLI, the web input,
+   and the `amount` parameter of `/api/convert`, which must keep calling
+   `parse_amount` instead of growing a parser of its own. If you change the
+   parser, change `parseAmountText()` in `app.js` in the same PR.
 
 ## Reporting bugs
 

@@ -39,7 +39,21 @@ Opens http://127.0.0.1:5000 in your browser automatically. Features:
 
 Amounts may use either convention: `1,234.56` and `1.234,56` both mean one
 thousand two hundred thirty-four, decided from where the separators fall. The
-web input and the CLI share one parser, so the two cannot drift apart.
+web input, the CLI, and the `/api/convert` endpoint share one parser, so none
+of the three can drift apart: a grouped amount typed at the API resolves the
+same way it does everywhere else.
+
+## Run the tests
+
+```bat
+.venv\Scripts\pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest
+```
+
+Dev-only dependencies live in `requirements-dev.txt` (just `pytest`); the app
+itself needs none of them. The suite is 71 tests and fully offline: upstream
+calls are stubbed and the cache is redirected to a temp file, so it never
+touches the network or your `rates_cache.json`.
 
 ## Data sources (all free, no API key)
 
@@ -70,6 +84,13 @@ calculations, not quotes.
   this anywhere public.
 - `/api/*` endpoints are rate limited per IP: 120/min default, 30/min for history,
   10/min for refresh. One client cannot hammer the upstream providers through this app.
+- Every response carries a strict `Content-Security-Policy`: scripts only from
+  this origin and cdn.jsdelivr.net (where Chart.js comes from), styles and
+  fonts from the Google Fonts origins, connections only to this origin, no
+  framing, plus `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and
+  `Referrer-Policy: no-referrer`. The page uses no inline script or style, so
+  the strict policy costs nothing; Chart.js styles its tooltips through CSSOM
+  assignment, which the policy allows without `unsafe-inline`.
 - Currency names fetched from the CDN are HTML-escaped before rendering.
 
 ## Files
@@ -83,6 +104,9 @@ calculations, not quotes.
 | `main_original.py` | The original hand-entered-rate version (backup) |
 | `templates/`, `static/` | Web UI (no build step, vanilla JS)         |
 | `rates_cache.json` | Local rate cache (auto-created, safe to delete) |
+| `tests/`           | Offline pytest suite (71 tests, network stubbed) |
+| `requirements-dev.txt` | Dev-only dependencies (pytest)         |
+| `.github/workflows/ci.yml` | CI: pytest on push and PR, Python 3.9 and 3.14 |
 
 ## License
 
