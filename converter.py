@@ -81,6 +81,33 @@ class CurrencyError(Exception):
 # Upstream fetch gate
 # --------------------------------------------------------------------------- #
 
+class _Backoff:
+    """Upstream-wide failure memory that separate gates can share.
+
+    History keys need separate coalescing slots, but they all dial the same
+    providers. Sharing one failure timestamp keeps an outage at one round of
+    timeouts per retry window instead of one per distinct pair and range.
+    """
+
+    def __init__(self, retry_seconds: float = UPSTREAM_RETRY_SECONDS) -> None:
+        self._lock = threading.Lock()
+        self._retry_seconds = retry_seconds
+        self._failed_at = 0.0
+
+    def cooling(self) -> bool:
+        with self._lock:
+            elapsed = time.monotonic() - self._failed_at
+            return bool(self._failed_at) and elapsed < self._retry_seconds
+
+    def failed(self) -> None:
+        with self._lock:
+            self._failed_at = time.monotonic()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._failed_at = 0.0
+
+
 class _Upstream:
     """A one-shot gate in front of an upstream fetch.
 
@@ -95,13 +122,19 @@ class _Upstream:
       `retry_seconds`, so an outage costs one round of timeouts per window
       rather than one per client. Deliberately process-local: the file cache
       only ever holds data a source actually vouched for.
+
+    A gate can share its back-off with peers via `backoff`; history uses that
+    to coalesce per key without re-dialing an outage once per key.
     """
 
-    def __init__(self, retry_seconds: float = UPSTREAM_RETRY_SECONDS) -> None:
+    def __init__(
+        self,
+        retry_seconds: float = UPSTREAM_RETRY_SECONDS,
+        backoff: _Backoff | None = None,
+    ) -> None:
         self._cv = threading.Condition()
-        self._retry_seconds = retry_seconds
+        self._backoff = backoff or _Backoff(retry_seconds)
         self._busy = False
-        self._failed_at = 0.0
         self._result: object | None = None
         self._succeeded = False
 
@@ -121,10 +154,10 @@ class _Upstream:
                 # An explicit user-initiated refresh should always re-dial;
                 # the per-IP rate limit is what bounds how often that can
                 # happen, not the failure of somebody else's earlier attempt.
-                self._failed_at = 0.0
+                self._backoff.reset()
                 self._busy = True
                 leader = True
-            elif self._failed_at and time.monotonic() - self._failed_at < self._retry_seconds:
+            elif self._backoff.cooling():
                 return None, False  # recent failure: fail fast on stale data
             else:
                 self._busy = True
@@ -136,14 +169,14 @@ class _Upstream:
             except BaseException:
                 with self._cv:
                     self._result, self._succeeded = None, False
-                    self._failed_at = time.monotonic()
+                    self._backoff.failed()
                     self._busy = False
                     self._cv.notify_all()
                 raise
             with self._cv:
                 self._result, self._succeeded = result, result is not None
                 if result is None:
-                    self._failed_at = time.monotonic()
+                    self._backoff.failed()
                 self._busy = False
                 self._cv.notify_all()
             return result, True
@@ -156,8 +189,28 @@ class _Upstream:
 
 
 _RATES_GATE = _Upstream()
-_HISTORY_GATE = _Upstream()
 _NAMES_GATE = _Upstream()
+
+# History is parameterized by pair and range, so it gets one gate per cache key:
+# one shared gate would hand a follower another key's points. The failure
+# memory stays shared, because an outage must not be re-dialed once per key.
+_HISTORY_BACKOFF = _Backoff()
+_HISTORY_GATES: dict[str, _Upstream] = {}
+_HISTORY_GATES_LOCK = threading.Lock()
+
+
+def _history_gate(key: str) -> _Upstream:
+    """The coalescing gate for one history key (from/to/days).
+
+    Same key still makes exactly one upstream round trip; different keys never
+    share a result. `_HISTORY_BACKOFF` is the part they do share, so a total
+    failure suppresses re-dials across every key for the same retry window.
+    """
+    with _HISTORY_GATES_LOCK:
+        gate = _HISTORY_GATES.get(key)
+        if gate is None:
+            gate = _HISTORY_GATES[key] = _Upstream(backoff=_HISTORY_BACKOFF)
+        return gate
 
 
 # --------------------------------------------------------------------------- #
@@ -480,7 +533,7 @@ def fetch_history(from_cur: str, to_cur: str, days: int = 30) -> list[dict]:
         return cached["points"]
 
     start = (date.today() - timedelta(days=days)).isoformat()
-    points, ok = _HISTORY_GATE.run(
+    points, ok = _history_gate(key).run(
         lambda: _collect_history(from_cur, to_cur, days, start)
     )
     if not ok or points is None:
