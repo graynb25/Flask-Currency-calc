@@ -113,7 +113,14 @@ def api_convert():
         # Narrow to float once, up front: the amount drives every result below,
         # and a value that cannot survive the float64 rounding must be rejected
         # before any work is done rather than halfway through the loop.
-        amount_value = converter.finite_float(request.args.get("amount", "1"))
+        # One shared amount parser: the CLI and the web input both accept
+        # grouped figures like 1,234.56, so the API must too rather than
+        # letting float() reject them. parse_amount returns Decimal and
+        # finite_float re-checks after narrowing, so 1e400 still fails
+        # cleanly and the body never carries an Infinity token.
+        amount_value = converter.finite_float(
+            converter.parse_amount(request.args.get("amount", "1"))
+        )
         from_cur = _currency_arg("from", rates)
         to_raw = request.args.get("to", "EUR")
         targets = [t.strip().upper() for t in to_raw.split(",") if t.strip()]
