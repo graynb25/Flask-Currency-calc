@@ -304,10 +304,21 @@ def _expired(cache: dict) -> bool:
 
 
 def _load_cache() -> dict | None:
+    """Return the cache dict, or None when there is nothing usable to read.
+
+    A valid JSON document of the wrong shape (a list, a string, ...) is not
+    a cache any caller can use: attribute and item access on it would raise
+    AttributeError, which is not a CurrencyError, so it would escape as a
+    500 instead of refetching. Treat it as absent here so every consumer
+    (_fetch_fresh_rates, _save_top, fetch_history, ...) is safe at once.
+    A dict without a 'rates' table still loads; the rates-shape check stays
+    in fetch_rates so stored history entries survive a rates refresh.
+    """
     try:
-        return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+        data = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    return data if isinstance(data, dict) else None
 
 
 def _save_cache(cache: dict) -> None:
