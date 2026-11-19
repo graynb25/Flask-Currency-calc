@@ -144,6 +144,7 @@ def api_convert():
                 "rates": rate_map,
                 "updated": rates["updated"],
                 "source": rates["source"],
+                "stale": rates.get("stale", False),
             }
         )
     except (converter.CurrencyError, ArithmeticError) as exc:
