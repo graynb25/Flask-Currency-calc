@@ -226,6 +226,12 @@ def fetch_rates(force: bool = False) -> dict:
     Falls back to a stale cache when every API is unreachable.
     """
     cache = _load_cache()
+    if not isinstance(cache, dict) or not isinstance(cache.get("rates"), dict):
+        # Valid JSON without a usable rate table (missing key, wrong type,
+        # or a top-level list) is not a cache miss the caller can use: it
+        # used to flow into app.py and surface as a 500. Treat it as absent
+        # so this call refetches instead.
+        cache = None
     if not force and cache and not _expired(cache):
         return cache
 
