@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -274,9 +276,28 @@ def _load_cache() -> dict | None:
 
 
 def _save_cache(cache: dict) -> None:
+    """Persist the cache atomically so readers never see a half-written file.
+
+    The file used to be rewritten in place while readers load it without the
+    lock, so a concurrent read could catch truncated JSON and treat the cache
+    as absent. Writing to a sibling temp file and renaming over it makes the
+    swap atomic on Windows and POSIX.
+    """
+    tmp_path = None
     try:
-        CACHE_FILE.write_text(json.dumps(cache), encoding="utf-8")
+        text = json.dumps(cache)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=CACHE_FILE.parent, prefix=CACHE_FILE.name + ".", suffix=".tmp"
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+            tmp.write(text)
+        os.replace(tmp_path, CACHE_FILE)
     except OSError:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
         pass  # caching is best-effort; live conversion still works
 
 
