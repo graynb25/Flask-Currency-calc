@@ -10,3 +10,4 @@ __pycache__/
 
 # Generated cache (public rate data only; recreated at runtime)
 rates_cache.json
+rates_cache.json.*.tmp
