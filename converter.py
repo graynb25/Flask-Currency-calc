@@ -181,7 +181,7 @@ class _Upstream:
                     self._backoff.failed()
                 self._busy = False
                 self._cv.notify_all()
-            return result, True
+            return result, result is not None
 
         with self._cv:  # a peer is already asking; wait for its verdict
             while self._busy:
