@@ -199,6 +199,9 @@ _NAMES_GATE = _Upstream()
 _HISTORY_BACKOFF = _Backoff()
 _HISTORY_GATES: dict[str, _Upstream] = {}
 _HISTORY_GATES_LOCK = threading.Lock()
+_HISTORY_GATES_MAX = 256
+_HISTORY_GATE_IDLE_SECONDS = 3600
+_HISTORY_GATE_TOUCHED: dict[str, float] = {}
 
 
 def _history_gate(key: str) -> _Upstream:
@@ -207,11 +210,37 @@ def _history_gate(key: str) -> _Upstream:
     Same key still makes exactly one upstream round trip; different keys never
     share a result. `_HISTORY_BACKOFF` is the part they do share, so a total
     failure suppresses re-dials across every key for the same retry window.
+
+    The registry is bounded: past `_HISTORY_GATES_MAX` keys, gates that are
+    not busy and have been unused for `_HISTORY_GATE_IDLE_SECONDS` are
+    dropped before a new one is registered, the same prune-before-register
+    reasoning as `enforce_rate_limits` in app.py. Only the dict slot is
+    forgotten; a thread already holding the old gate still waits on its own
+    condition variable, so pruning never breaks an in-flight wait (worst case
+    one extra dial for that key once).
     """
+    now = time.monotonic()
     with _HISTORY_GATES_LOCK:
         gate = _HISTORY_GATES.get(key)
-        if gate is None:
-            gate = _HISTORY_GATES[key] = _Upstream(backoff=_HISTORY_BACKOFF)
+        if gate is not None:
+            _HISTORY_GATE_TOUCHED[key] = now
+            return gate
+        if len(_HISTORY_GATES) >= _HISTORY_GATES_MAX:
+            cutoff = now - _HISTORY_GATE_IDLE_SECONDS
+            for other_key, touched in list(_HISTORY_GATE_TOUCHED.items()):
+                if touched > cutoff:
+                    continue
+                other = _HISTORY_GATES.get(other_key)
+                if other is None:
+                    _HISTORY_GATE_TOUCHED.pop(other_key, None)
+                    continue
+                with other._cv:
+                    busy = other._busy
+                if not busy:
+                    _HISTORY_GATES.pop(other_key, None)
+                    _HISTORY_GATE_TOUCHED.pop(other_key, None)
+        gate = _HISTORY_GATES[key] = _Upstream(backoff=_HISTORY_BACKOFF)
+        _HISTORY_GATE_TOUCHED[key] = now
         return gate
 
 
