@@ -90,6 +90,11 @@ function createCombobox(root, { onSelect }) {
   const panel = root.querySelector(".combo-panel");
   const filter = root.querySelector(".combo-filter");
   const list = root.querySelector(".combo-list");
+  // Stable ids so assistive tech can track the active option: one listbox
+  // per combobox, one option id per currency code.
+  const listId = `${root.id || "combo"}-listbox`;
+  list.id = listId;
+  filter.setAttribute("aria-controls", listId);
 
   let options = [];     // [{code, name, flag}]
   let value = null;
@@ -100,13 +105,18 @@ function createCombobox(root, { onSelect }) {
 
   function paint() {
     list.innerHTML = visible.map((o, i) => `
-      <div class="combo-option${o.code === value ? " selected" : ""}${i === activeIndex ? " active" : ""}"
+      <div id="${listId}-${o.code}" class="combo-option${o.code === value ? " selected" : ""}${i === activeIndex ? " active" : ""}"
            role="option" aria-selected="${o.code === value}" data-code="${esc(o.code)}">
         <span class="flag">${esc(o.flag)}</span><code>${esc(o.code)}</code>
         <span class="opt-name">${esc(o.name)}</span>
       </div>`).join("") || `<div class="combo-empty">No currency matches that.</div>`;
     const active = list.querySelector(".combo-option.active");
-    if (active) active.scrollIntoView({ block: "nearest" });
+    if (active) {
+      active.scrollIntoView({ block: "nearest" });
+      filter.setAttribute("aria-activedescendant", active.id);
+    } else {
+      filter.removeAttribute("aria-activedescendant");
+    }
   }
 
   function renderList() {
@@ -140,6 +150,7 @@ function createCombobox(root, { onSelect }) {
   function close() {
     panel.classList.add("hidden");
     button.setAttribute("aria-expanded", "false");
+    filter.removeAttribute("aria-activedescendant");
   }
 
   function choose(code) {
@@ -498,6 +509,9 @@ async function loadHistory() {
   const key = `${from}/${to}/${days}`;
   state.historyKey = key;
   el.chartTitle.textContent = `${from} → ${to} · ${days}-day history`;
+  // Name the pair and range for screen readers; the canvas itself carries no text.
+  el.chartCanvas.setAttribute("role", "img");
+  el.chartCanvas.setAttribute("aria-label", `${from} to ${to}, ${days}-day history chart`);
 
   if (typeof Chart === "undefined") {
     el.chartCanvas.classList.add("hidden");
